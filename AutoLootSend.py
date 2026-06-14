@@ -10,6 +10,7 @@ import subprocess
 import time
 import sys
 import math
+import re  # Importado para a ordenação natural
 
 
 def check_deps():
@@ -58,10 +59,18 @@ def countdown(seconds: int, label: str = ""):
 
 def get_all_files(directory: str):
     try:
-        entries = sorted(os.listdir(directory))
+        # Pega a lista bruta de entradas
+        entries = os.listdir(directory)
     except FileNotFoundError:
         print(f"\n[ERRO] Diretorio nao encontrado: {directory}")
         sys.exit(1)
+
+    # Chave de ordenação natural (trata sequências de dígitos como números inteiros)
+    def natural_sort_key(s):
+        return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+
+    # Ordena os arquivos de forma humana (ex: 999 antes de 1000)
+    entries.sort(key=natural_sort_key)
 
     files = [
         os.path.join(directory, f)
@@ -84,7 +93,7 @@ def chunk(lst, size):
 def main():
     print("=" * 55)
     print("  AUTO PASTE - Enviar todos os arquivos pro Discord")
-    print("  Modo: 10 arquivos de uma vez")
+    print("  Modo: 10 arquivos de uma vez (Ordenação Corrigida)")
     print("=" * 55)
 
     check_deps()
