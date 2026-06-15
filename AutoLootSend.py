@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Auto Paste - Envia TODOS os arquivos para o Discord em lotes de 10 de uma vez
+Auto Paste - Envia arquivos permanecendo sempre na janela do Discord (Com tempo de upload seguro)
 Dependencias: xdotool, xclip
 Instalar: sudo apt install xdotool xclip
 """
@@ -10,7 +10,7 @@ import subprocess
 import time
 import sys
 import math
-import re  # Importado para a ordenação natural
+import re
 
 
 def check_deps():
@@ -25,7 +25,7 @@ def check_deps():
 
 
 def copy_files_to_clipboard(filepaths: list):
-    """Copia vários arquivos de uma vez para o clipboard como URI list."""
+    """Copia os arquivos para o clipboard em segundo plano (funciona em qualquer janela)."""
     uris = "\r\n".join(f"file://{os.path.abspath(f)}" for f in filepaths) + "\r\n"
     proc = subprocess.Popen(
         ["xclip", "-selection", "clipboard", "-t", "text/uri-list"],
@@ -36,12 +36,18 @@ def copy_files_to_clipboard(filepaths: list):
 
 
 def alt_tab():
+    """Dá Alt+Tab apenas para entrar no Discord no início."""
     subprocess.run(["xdotool", "key", "alt+Tab"], capture_output=True)
     time.sleep(0.7)
 
 
 def ctrl_v():
     subprocess.run(["xdotool", "key", "ctrl+v"], capture_output=True)
+    time.sleep(0.5)
+
+
+def ctrl_r():
+    subprocess.run(["xdotool", "key", "ctrl+r"], capture_output=True)
     time.sleep(0.5)
 
 
@@ -59,29 +65,20 @@ def countdown(seconds: int, label: str = ""):
 
 def get_all_files(directory: str):
     try:
-        # Pega a lista bruta de entradas
         entries = os.listdir(directory)
     except FileNotFoundError:
         print(f"\n[ERRO] Diretorio nao encontrado: {directory}")
         sys.exit(1)
 
-    # Chave de ordenação natural (trata sequências de dígitos como números inteiros)
     def natural_sort_key(s):
         return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
-    # Ordena os arquivos de forma humana (ex: 999 antes de 1000)
     entries.sort(key=natural_sort_key)
-
-    files = [
-        os.path.join(directory, f)
-        for f in entries
-        if os.path.isfile(os.path.join(directory, f))
-    ]
+    files = [os.path.join(directory, f) for f in entries if os.path.isfile(os.path.join(directory, f))]
 
     if not files:
         print("\n[ERRO] Nenhum arquivo encontrado no diretorio.")
         sys.exit(1)
-
     return files
 
 
@@ -92,8 +89,7 @@ def chunk(lst, size):
 
 def main():
     print("=" * 55)
-    print("  AUTO PASTE - Enviar todos os arquivos pro Discord")
-    print("  Modo: 10 arquivos de uma vez (Ordenação Corrigida)")
+    print("  AUTO PASTE - Modo Focado no Discord (Com Upload Seguro)")
     print("=" * 55)
 
     check_deps()
@@ -105,7 +101,20 @@ def main():
     wait_input = input("Aguardar entre cada lote de 10 em segundos [padrao 30]: ").strip()
     wait_secs = int(wait_input) if wait_input.isdigit() else 30
 
-    delay_input = input("Delay inicial para voce ir ao Discord em segundos [padrao 5]: ").strip()
+    reset_input = input("Deseja dar Ctrl+R no Discord periodicamente? (s/n) [padrao s]: ").strip().lower()
+    do_reset = reset_input != 'n'
+
+    if do_reset:
+        lotes_reset_input = input("Dar Ctrl+R a cada quantos lotes enviados? [padrao 50]: ").strip()
+        lotes_to_reset = int(lotes_reset_input) if lotes_reset_input.isdigit() else 50
+
+        tempo_reset_input = input("Quantos segundos o Discord leva para recarregar apos o Ctrl+R? [padrao 30]: ").strip()
+        wait_reset_secs = int(tempo_reset_input) if tempo_reset_input.isdigit() else 30
+    else:
+        lotes_to_reset = 99999
+        wait_reset_secs = 0
+
+    delay_input = input("\nDelay inicial para você ir ao Discord a primeira vez [padrão 5]: ").strip()
     delay_start = int(delay_input) if delay_input.isdigit() else 5
 
     all_files = get_all_files(directory)
@@ -114,60 +123,54 @@ def main():
 
     print(f"\n{total} arquivo(s) — {total_lotes} lote(s) de ate 10")
     print("-" * 55)
-    for lote_num, lote in enumerate(chunk(all_files, 10), 1):
-        print(f"  Lote {lote_num}:")
-        for f in lote:
-            print(f"    - {os.path.basename(f)}")
-    print("-" * 55)
 
     print()
-    input("Pressione ENTER para iniciar...")
+    input("Pressione ENTER para iniciar... (Deixe a janela do Discord logo atrás deste terminal)")
     print()
 
-    countdown(delay_start, "comecando em")
+    # Contagem inicial ainda no terminal
+    countdown(delay_start, "para mudar para o Discord")
+    
+    # Entra na janela do Discord apenas uma vez no início
+    alt_tab()
 
     for lote_num, lote in enumerate(chunk(all_files, 10), 1):
-        nomes = ", ".join(os.path.basename(f) for f in lote)
-        print(f"\n[Lote {lote_num}/{total_lotes}] Copiando {len(lote)} arquivo(s):")
-        for f in lote:
-            print(f"  - {os.path.basename(f)}")
-
-        # 1. Copia os 10 arquivos de uma vez
+        # 1. Copia o lote atual em segundo plano
         copy_files_to_clipboard(lote)
 
-        # 2. Alt+Tab pro Discord
-        print("\n  -> Alt+Tab...")
-        alt_tab()
-
-        # 3. Ctrl+V — cola os 10 de uma vez
-        print("  -> Ctrl+V...")
+        # 2. Cola na janela do Discord
         ctrl_v()
 
-        # 4. Aguarda o Discord processar os arquivos antes do Enter
-        time.sleep(2.0)
+        # 3. Aguarda o Discord carregar os arquivos na caixa de texto antes de enviar
+        time.sleep(2.5)
 
-        # 5. Enter para enviar
-        print("  -> Enter...")
+        # 4. Envia o lote
         press_enter()
-
         print(f"  OK! Lote {lote_num} enviado.")
 
-        # Volta pro terminal
-        time.sleep(0.5)
-        alt_tab()
+        # 5. GERENCIAMENTO DE ESPERA SEGURO
+        # Se for o lote do reset:
+        if do_reset and lote_num % lotes_to_reset == 0 and lote_num < total_lotes:
+            # Primeiro espera o tempo normal para os arquivos terminarem de subir pro servidor
+            countdown(wait_secs, f"para concluir o upload do lote {lote_num} antes do reset")
+            
+            # Agora que está seguro, reinicia a interface
+            print(f"  -> Lote limite atingido. Aplicando Ctrl+R no Discord...")
+            ctrl_r()
+            
+            # Espera o tempo do reset para o Discord reabrir
+            countdown(wait_reset_secs, "para recarregamento da interface do Discord")
+        
+        # Se NÃO for lote de reset, apenas espera o tempo normal do próximo lote
+        elif lote_num < total_lotes:
+            countdown(wait_secs, f"proximo lote ({lote_num + 1}/{total_lotes})")
 
-        # Aguarda antes do proximo lote (exceto no ultimo)
-        if lote_num < total_lotes:
-            countdown(wait_secs, f"lote {lote_num + 1}")
-
-    print(f"\n{'=' * 55}")
-    print(f"  Concluido! {total} arquivo(s) em {total_lotes} lote(s) enviados.")
-    print(f"{'=' * 55}")
+    print("\n[FIM] Todos os arquivos foram processados!")
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n[INTERROMPIDO] Automacao cancelada pelo usuario.")
+        print("\n\n[INTERROMPIDO] Automacao cancelada.")
         sys.exit(0)
